@@ -1,0 +1,209 @@
+class BlackListClass {
+    #blacklist = new Set()
+
+    /**
+     * Constructor para inicializar la lista negra.
+     * @param {Array<string>} initialNumbers - Lista inicial de números a bloquear.
+     */
+    constructor(initialNumbers = []) {
+        this.add(initialNumbers);
+    }
+
+    /**
+     * Excepción lanzada cuando un número ya existe en la lista negra.
+     */
+    static PhoneNumberAlreadyExistsError = class extends Error {
+        constructor(phoneNumber) {
+            super(`El número de teléfono ${phoneNumber} ya está en la lista negra.`);
+            this.name = 'PhoneNumberAlreadyExistsError';
+        }
+    }
+
+    /**
+     * Excepción lanzada cuando un número no se encuentra en la lista negra.
+     */
+    static PhoneNumberNotFoundError = class extends Error {
+        constructor(phoneNumber) {
+            super(`El número de teléfono ${phoneNumber} no está en la lista negra.`);
+            this.name = 'PhoneNumberNotFoundError';
+        }
+    }
+
+    /**
+     * Añade uno o varios números de teléfono a la lista negra.
+     * @param {string | Array<string>} phoneNumbers - Número o números a añadir.
+     * @returns {Array<string>} - Devuelve una lista de mensajes indicando el resultado de añadir cada número.
+     */
+    add(...phoneNumbers) {
+        const responseMessages = [];
+
+        phoneNumbers.flat().forEach((number) => {
+            if (this.#blacklist.has(number)) {
+                responseMessages.push(`El número de teléfono ${number} ya está en la lista negra.`);
+            } else {
+                this.#blacklist.add(number);
+                responseMessages.push(`Número ${number} añadido exitosamente.`);
+            }
+        });
+
+        return responseMessages
+    }
+
+    /**
+     * Elimina un número de teléfono de la lista negra.
+     * @param {string} phoneNumber - El número a eliminar.
+     */
+    remove(phoneNumber) {
+        if (!this.#blacklist.has(phoneNumber)) {
+            throw new BlackListClass.PhoneNumberNotFoundError(phoneNumber)
+        }
+        this.#blacklist.delete(phoneNumber);
+    }
+
+    /**
+     * Verifica si un número de teléfono está en la lista negra.
+     * @param {string} phoneNumber - El número a verificar.
+     * @returns {boolean} - Verdadero si está en la lista, falso en caso contrario.
+     */
+    checkIf(phoneNumber) {
+        return this.#blacklist.has(phoneNumber)
+    }
+
+    /**
+     * Proporciona una copia de la lista negra actual.
+     * @returns {Array<string>} - Los números de teléfono en la lista negra.
+     */
+    getList() {
+        return [...this.#blacklist]
+    }
+}
+var blacklist_class = BlackListClass;
+
+const { EventEmitter: EventEmitter$1 } = require$$0$1;
+const { toCtx } = methods;
+const { printer } = interactive;
+const { delay } = delay_1;
+const { Console } = require$$4;
+const { createWriteStream } = require$$5;
+const Queue = queue;
+
+const { LIST_REGEX } = events;
+const SingleState = state_class;
+const GlobalState = globalState_class;
+const IdleState = idleState_class;
+
+const logger = new Console({
+    stdout: createWriteStream(`${process.cwd()}/core.class.log`),
+});
+const loggerQueue = new Console({
+    stdout: createWriteStream(`${process.cwd()}/queue.class.log`),
+});
+
+const idleForCallback = new IdleState();
+const DynamicBlacklist = blacklist_class;
+
+/**
+ * [ ] Escuchar eventos del provider asegurarte que los provider emitan eventos
+ * [ ] Guardar historial en db
+ * [ ] Buscar mensaje en flow
+ *
+ */
+let CoreClass$1 = class CoreClass extends EventEmitter$1 {
+    flowClass
+    databaseClass
+    providerClass
+    queuePrincipal
+    stateHandler = new SingleState()
+    globalStateHandler = new GlobalState()
+    dynamicBlacklist = new DynamicBlacklist()
+    generalArgs = {
+        blackList: [],
+        listEvents: {},
+        delay: 0,
+        globalState: {},
+        extensions: undefined,
+        queue: {
+            timeout: 20000,
+            concurrencyLimit: 15,
+        },
+    }
+    constructor(_flow, _database, _provider, _args) {
+        super();
+        this.flowClass = _flow;
+        this.databaseClass = _database;
+        this.providerClass = _provider;
+        this.generalArgs = { ...this.generalArgs, ..._args };
+        this.dynamicBlacklist.add(this.generalArgs.blackList);
+
+        this.queuePrincipal = new Queue(
+            loggerQueue,
+            this.generalArgs.queue.concurrencyLimit,
+            this.generalArgs.queue.timeout
+        );
+
+        this.globalStateHandler.updateState()(this.generalArgs.globalState);
+
+        if (this.generalArgs.extensions) this.globalStateHandler.RAW = this.generalArgs.extensions;
+
+        for (const { event, func } of this.listenerBusEvents()) {
+            this.providerClass.on(event, func);
+        }
+    }
+
+    /**
+     * Manejador de eventos
+     */
+    listenerBusEvents = () => [
+        {
+            event: 'preinit',
+            func: () => printer('Iniciando proveedor, espere...'),
+        },
+        {
+            event: 'require_action',
+            func: ({ instructions, title = '⚡⚡ ACCIÓN REQUERIDA ⚡⚡' }) => printer(instructions, title),
+        },
+        {
+            event: 'ready',
+            func: () => printer('Proveedor conectado y listo'),
+        },
+        {
+            event: 'auth_failure',
+            func: ({ instructions }) => printer(instructions, '⚡⚡ ERROR AUTH ⚡⚡'),
+        },
+        {
+            event: 'message',
+            func: (msg) => this.handleMsg(msg),
+        },
+        {
+            event: 'notice',
+            func: (note) => printer(note),
+        },
+    ]
+
+    /**
+     * GLOSSARY.md
+     * @param {*} messageCtxInComming
+     * @returns
+     */
+    handleMsg = async (messageCtxInComming) => {
+        logger.log(`[handleMsg]: `, messageCtxInComming);
+        idleForCallback.stop(messageCtxInComming);
+        const { body, from } = messageCtxInComming;
+        let msgToSend = [];
+        let endFlowFlag = false;
+        let fallBackFlag = false;
+        if (this.dynamicBlacklist.checkIf(from)) return
+        if (!body) return
+
+        let prevMsg = await this.databaseClass.getPrevByNumber(from);
+        const refToContinue = this.flowClass.findBySerialize(prevMsg?.refSerialize);
+
+        if (prevMsg?.ref) {
+            delete prevMsg._id;
+            const ctxByNumber = toCtx({
+                body,
+                from,
+                prevRef: prevMsg.refSerialize,
+            });
+            await this.databaseClass.save(ctxByNumber);
+        }
